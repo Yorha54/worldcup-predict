@@ -1,0 +1,14 @@
+{
+  "name": "world-cup-ai-predictor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "实时世界杯赛程、资讯与比赛趋势分析应用",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check app.js && node --check real-data.js && node --check team-profiles.js && node --check schedule-data.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
