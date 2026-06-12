@@ -112,11 +112,45 @@ function renderPrediction() {
   $("#aiSummary").textContent = liveAnalysis?.sections?.join(" ") || tournamentAdjustedSummary(m);
   const labels = finished ? ["控球优势", "机会转化", "防守稳定"] : [`${m.home.name}胜`, "平局", `${m.away.name}胜`];
   $("#probabilities").innerHTML = m.probs.map((value, index) => `<div class="prob-item"><div><span>${labels[index]}</span><strong>${value}%</strong></div><div class="prob-track"><i style="width:${value}%"></i></div></div>`).join("");
+  renderSidePredictions(m, liveAnalysis);
   renderMomentum();
   renderIntel();
   renderTeamSwitch();
   renderPlayers();
   renderProcess();
+}
+
+function renderSidePredictions(match, liveAnalysis) {
+  const side = buildSidePredictions(match, liveAnalysis);
+  const cards = [
+    ["全场总进球", `${side.totalGoals} 球`, side.totalText],
+    ["2.5球大小", `大球 ${side.over}% · 小球 ${100 - side.over}%`, side.over >= 55 ? "倾向至少出现3球" : side.over <= 45 ? "倾向不超过2球" : "大小球分布接近"],
+    ["双方均进球", `${side.btts}%`, side.btts >= 55 ? "双方都有较明显破门路径" : "至少一队被零封的概率更高"],
+    ["其他可能比分", side.scores.join(" · "), "按胜平负概率与总进球预期排列"],
+    ["全场角球", `${side.corners[0]}–${side.corners[1]} 个`, side.cornerText],
+    ["预测状态", liveAnalysis ? `实时更新 · ${liveAnalysis.minute}'` : "赛前模型", liveAnalysis ? "随比分、射门、射正和角球变化" : "开赛后每2分钟重新计算"]
+  ];
+  $("#sidePredictions").innerHTML = cards.map(([label, value, note]) => `<div class="side-prediction"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join("");
+}
+
+function buildSidePredictions(match, liveAnalysis) {
+  const strength = window.WORLD_CUP_TEAM_STRENGTH || {};
+  const gap = Math.abs((strength[match.homeEnglishName] || 68) - (strength[match.awayEnglishName] || 68));
+  const currentGoals = liveAnalysis ? liveAnalysis.score[0] + liveAnalysis.score[1] : 0;
+  const minute = liveAnalysis?.minute || 0;
+  const stats = liveAnalysis?.stats;
+  const shotQuality = stats ? ((stats.home.shotsOnTarget || 0) + (stats.away.shotsOnTarget || 0)) * .16 + ((stats.home.totalShots || 0) + (stats.away.totalShots || 0)) * .025 : 0;
+  const remainingFactor = liveAnalysis ? Math.max(0, (95 - minute) / 95) : 1;
+  const expected = liveAnalysis ? currentGoals + Math.max(.15, (2.25 + gap / 45 + shotQuality) * remainingFactor) : 2.2 + gap / 35 + (Math.min(match.probs[0], match.probs[2]) > 25 ? .25 : 0);
+  const totalGoals = Math.max(currentGoals, Math.min(6, Math.round(expected)));
+  const over = Math.max(currentGoals >= 3 ? 94 : 14, Math.min(92, Math.round(43 + (expected - 2.35) * 24 + currentGoals * 5)));
+  const btts = Math.max((liveAnalysis?.score[0] > 0 && liveAnalysis?.score[1] > 0) ? 100 : 18, Math.min(82, Math.round(38 + Math.min(match.probs[0], match.probs[2]) * .55 + (stats ? Math.min(stats.home.shotsOnTarget || 0, stats.away.shotsOnTarget || 0) * 5 : 0))));
+  const primary = match.score || [1, 1];
+  const candidates = [[primary[0], primary[1]], [Math.max(0, primary[0] - 1), primary[1]], [primary[0], Math.max(0, primary[1] - 1)], [primary[0] + 1, primary[1]], [primary[0], primary[1] + 1]];
+  const scores = [...new Set(candidates.map(score => `${score[0]}-${score[1]}`))].filter(score => !liveAnalysis || score.split("-").every((value, index) => Number(value) >= liveAnalysis.score[index])).slice(0, 3);
+  const currentCorners = stats ? (stats.home.wonCorners || 0) + (stats.away.wonCorners || 0) : 0;
+  const projectedCorners = liveAnalysis ? currentCorners + Math.round(Math.max(0, 9.5 - currentCorners) * remainingFactor) : Math.round(8 + gap / 18);
+  return { totalGoals, over, btts, scores, corners: [Math.max(currentCorners, projectedCorners - 2), Math.max(currentCorners + 1, projectedCorners + 2)], totalText: liveAnalysis ? `当前已有 ${currentGoals} 球，按剩余时间和机会质量估算` : "结合双方实力差、胜平负概率与比赛开放程度", cornerText: liveAnalysis ? `当前 ${currentCorners} 个，按剩余时间和攻势估算` : "强队压制、边路进攻和预期比赛节奏综合估算" };
 }
 
 function adjustPredictionForTournamentForm(match) {
@@ -169,7 +203,8 @@ function intelCard(teamData, side) {
     const stats = teamData.metrics || (side === "home" ? selectedMatch.history : selectedMatch.awayHistory).map(item => ({ label: item[0], value: item[1], grade: item[2], reason: "综合近期赛果、比赛内容和阵容情况得出。" }));
     const form = liveRuntime.teamTournamentForm?.[selectedMatch[`${side}EnglishName`]];
     const tournamentEvidence = form?.reports?.length ? `<div class="tournament-form"><strong>本届世界杯实战</strong>${form.reports.map(report => `<p>${report.opponent}：${report.score}（${report.result}），控球 ${report.possession}%，射门 ${report.shots} 次、射正 ${report.shotsOnTarget} 次。</p>`).join("")}</div>` : "";
-    body = `<div class="evidence-list">${stats.map(stat => `<div class="evidence-item"><div class="evidence-head"><span>${stat.label}</span><strong>${stat.grade}</strong></div><div class="light-track"><i style="width:${stat.value}%"></i></div><p>${stat.reason}</p></div>`).join("")}</div>${tournamentEvidence}${intelSources(teamData)}`;
+    const recent = teamData.recentMatches?.length ? `<div class="recent-results"><strong>最近比赛记录</strong>${teamData.recentMatches.map(item => `<div class="recent-result"><span>${item.date || "近期"}</span><p>${item.opponent}</p><b>${item.score}</b></div>`).join("")}</div>` : "";
+    body = `<div class="evidence-list">${stats.map(stat => `<div class="evidence-item"><div class="evidence-head"><span>${stat.label}</span><strong>${stat.grade}</strong></div><div class="light-track"><i style="width:${stat.value}%"></i></div><p>${stat.reason}</p></div>`).join("")}</div>${recent}${tournamentEvidence}${intelSources(teamData)}`;
   } else if (selectedTab === "style") {
     const details = teamData.styleDetails || [{ title: "比赛方式", text: teamData.description }];
     body = `<div class="style-tags">${teamData.styles.map(tag => `<span>${tag}</span>`).join("")}</div><p class="intel-lead">${teamData.description}</p><div class="analysis-blocks">${details.map(item => `<div><strong>${item.title}</strong><p>${item.text}</p></div>`).join("")}</div>${intelSources(teamData)}`;

@@ -25,3 +25,31 @@
 ## 健康检查
 
 部署后访问 `/health`，返回 `{"ok":true,...}` 即表示后台更新服务正常。
+
+## 在 GitHub 更新新版本
+
+通常不需要删除旧文件。进入 GitHub 仓库后：
+
+1. 点击 **Add file → Upload files**。
+2. 从本地 `world-cup-ai-predictor` 文件夹选择新版文件。
+3. 同名文件会被新版覆盖，新文件会自动加入。
+4. 点击页面底部 **Commit changes**，Railway 会自动重新部署。
+
+完整更新建议上传这些生产文件：
+
+- `index.html`
+- `styles.css`
+- `app.js`
+- `server.js`
+- `real-data.js`
+- `schedule-data.js`
+- `team-profiles.js`
+- `team-profiles-14.js`
+- `package.json`
+- `Dockerfile`
+- `railway.toml`
+- `.dockerignore`
+
+不要上传本机专用的 `updater.log`、`updater.pid`、`com.codex.worldcup-ai.plist` 和中文 `.command` 文件。
+
+GitHub 普通网页不适合批量删除。最简单且风险最低的方法是直接上传同名新版覆盖旧版；确实需要清空仓库时，建议新建一个空仓库再上传完整生产文件，而不是逐个删除。
