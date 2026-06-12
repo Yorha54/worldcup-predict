@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.codex.worldcup-ai</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/xueyifei/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node</string>
+    <string>/Users/xueyifei/Documents/Codex/world-cup-ai-predictor/server.js</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xueyifei/Documents/Codex/world-cup-ai-predictor</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/Users/xueyifei/Documents/Codex/world-cup-ai-predictor/service.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xueyifei/Documents/Codex/world-cup-ai-predictor/service-error.log</string>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>
