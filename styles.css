@@ -106,6 +106,7 @@ main { overflow: hidden; }
 .score-center div { display: flex; align-items: center; justify-content: center; gap: 13px; margin: 2px 0 5px; font: 700 62px/1 "Barlow Condensed", sans-serif; }
 .score-center div span { color: var(--muted); font-size: 30px; }
 .result-badge { color: var(--lime); font-size: 12px; font-weight: 700; }
+.prematch-benchmark { display: block; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .probabilities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
 .prob-item { padding: 11px 12px; background: rgba(255,255,255,.04); border-radius: 9px; }
 .prob-item div { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 10px; }

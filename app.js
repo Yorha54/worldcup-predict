@@ -90,7 +90,6 @@ function renderPrediction() {
   if (!finished && !liveAnalysis) adjustPredictionForTournamentForm(m);
   if (liveAnalysis) {
     m.probs = liveAnalysis.probabilities;
-    m.score = liveAnalysis.score;
     m.confidence = liveAnalysis.confidence || m.confidence;
   }
   $("#confidenceLabel").textContent = finished ? "赛后数据状态" : "模型综合信心";
@@ -107,9 +106,19 @@ function renderPrediction() {
     $(`#${side}Name`).textContent = m[side].name;
     $(`#${side}Rank`).textContent = m[side].rank === "--" ? "世界排名持续同步 · 实时情报模型" : `FIFA 排名 #${m[side].rank} · ${m[side].titles} 次冠军`;
   });
-  $("#homeScore").textContent = m.score[0];
-  $("#awayScore").textContent = m.score[1];
-  $("#resultBadge").textContent = finished ? `完场 · ${m.result}` : m.result;
+  const displayedScore = liveAnalysis?.score || m.score;
+  $("#homeScore").textContent = displayedScore[0];
+  $("#awayScore").textContent = displayedScore[1];
+  $("#resultBadge").textContent = finished ? `完场 · ${m.result}` : isLive ? (displayedScore[0] > displayedScore[1] ? `${m.home.name}暂时领先` : displayedScore[0] < displayedScore[1] ? `${m.away.name}暂时领先` : "当前战平") : m.result;
+  const benchmark = $("#prematchBenchmark");
+  if (isLive) {
+    const predicted = m.predictedScore || m.preMatchScore || m.score;
+    benchmark.hidden = false;
+    benchmark.textContent = `赛前预测保留：${m.home.name} ${predicted[0]}-${predicted[1]} ${m.away.name} · ${m.predictedResult || m.preMatchResult || scoreResult(predicted, m.home.name, m.away.name)}`;
+  } else {
+    benchmark.hidden = true;
+    benchmark.textContent = "";
+  }
   const review = finished ? postMatchReview(m, liveAnalysis) : null;
   $("#aiSummary").textContent = review?.headline || liveAnalysis?.sections?.join(" ") || tournamentAdjustedSummary(m);
   if (finished && liveAnalysis) renderFinishedStats(m, liveAnalysis);
@@ -211,6 +220,13 @@ function adjustPredictionForTournamentForm(match) {
   match.result = modeled.result;
   match.expectedGoals = modeled.expectedGoals;
   match.scoreCandidates = modeled.scoreCandidates;
+  match.predictedScore = [...modeled.score];
+  match.predictedResult = modeled.result;
+  match.predictedProbs = [...match.probs];
+}
+
+function scoreResult(score, homeName, awayName) {
+  return score[0] > score[1] ? `${homeName}胜` : score[0] < score[1] ? `${awayName}胜` : "平局";
 }
 
 function tournamentAdjustedSummary(match) {
@@ -227,7 +243,6 @@ function renderMomentum() {
     const awayPressure = Math.min(98, 35 + (stats.away.totalShots || 0) * 3 + (stats.away.shotsOnTarget || 0) * 7 + (stats.away.wonCorners || 0) * 2);
     selectedMatch.momentum = [50, homePressure, awayPressure, homePressure, awayPressure, Math.max(homePressure, awayPressure), Math.min(homePressure, awayPressure), homePressure, awayPressure, homePressure, awayPressure, 55];
     selectedMatch.probs = liveAnalysis.probabilities;
-    selectedMatch.score = liveAnalysis.score;
     if (selectedMatch.status === "finished") {
       const review = postMatchReview(selectedMatch, liveAnalysis);
       selectedMatch.process = [
@@ -258,6 +273,10 @@ function renderMomentum() {
     const review = postMatchReview(selectedMatch, liveAnalysis);
     reviewBox.hidden = false;
     reviewBox.innerHTML = `<h4>全场文字复盘</h4><p><strong>比赛定性：</strong>${review.headline}</p><p><strong>${selectedMatch.home.name}：</strong>${review.homeEvaluation}</p><p><strong>${selectedMatch.away.name}：</strong>${review.awayEvaluation}</p><p><strong>胜负关键：</strong>${review.decisiveFactors}</p><p><strong>后续影响：</strong>${review.nextImpact}</p>`;
+  } else if (selectedMatch.status === "live" && liveAnalysis) {
+    const preview = buildLiveMatchPreview(selectedMatch, liveAnalysis);
+    reviewBox.hidden = false;
+    reviewBox.innerHTML = `<h4>实时分析与后续前瞻</h4><p><strong>赛前基准：</strong>${preview.baseline}</p><p><strong>当前局面：</strong>${preview.current}</p><p><strong>${selectedMatch.home.name}下一步：</strong>${preview.homeNext}</p><p><strong>${selectedMatch.away.name}下一步：</strong>${preview.awayNext}</p><p><strong>未来10–15分钟：</strong>${preview.nextWindow}</p><p><strong>预测修正：</strong>${preview.revision}</p>`;
   } else if (selectedMatch.status === "upcoming") {
     const preview = buildPreMatchPreview(selectedMatch);
     reviewBox.hidden = false;
@@ -266,6 +285,25 @@ function renderMomentum() {
     reviewBox.hidden = true;
     reviewBox.innerHTML = "";
   }
+}
+
+function buildLiveMatchPreview(match, analysis) {
+  const hs = analysis.stats.home || {}, as = analysis.stats.away || {};
+  const minute = analysis.minute || 0;
+  const [homeScore, awayScore] = analysis.score;
+  const predicted = match.predictedScore || match.preMatchScore || match.score;
+  const predictedProbs = match.predictedProbs || match.preMatchProbs || match.baseProbs || match.probs;
+  const liveProbs = analysis.probabilities || match.probs;
+  const homePressure = (hs.totalShots || 0) * 2 + (hs.shotsOnTarget || 0) * 5 + (hs.wonCorners || 0) * 1.5;
+  const awayPressure = (as.totalShots || 0) * 2 + (as.shotsOnTarget || 0) * 5 + (as.wonCorners || 0) * 1.5;
+  const pressureTeam = homePressure > awayPressure + 7 ? match.home.name : awayPressure > homePressure + 7 ? match.away.name : null;
+  const baseline = `赛前预测为 ${match.home.name} ${predicted[0]}-${predicted[1]} ${match.away.name}，胜平负概率约 ${predictedProbs[0]}% / ${predictedProbs[1]}% / ${predictedProbs[2]}%。这一基准会保留，用来判断实际比赛是否沿预期发展。`;
+  const current = `${minute}分钟实时比分 ${homeScore}-${awayScore}。控球 ${hs.possessionPct || 0}%-${as.possessionPct || 0}%，射门 ${hs.totalShots || 0}-${as.totalShots || 0}，射正 ${hs.shotsOnTarget || 0}-${as.shotsOnTarget || 0}，角球 ${hs.wonCorners || 0}-${as.wonCorners || 0}。${pressureTeam ? `${pressureTeam}当前连续攻势更强` : "双方尚未形成明显单向压制"}。`;
+  const homeNext = homeScore < awayScore ? `${match.home.name}需要提高向前传球速度，并让边后卫或中场增加禁区接应，但必须保留至少两名球员保护反击。` : homeScore > awayScore ? `${match.home.name}应避免无保护压上，通过控球和中场站位降低比赛回合，同时继续攻击对手被迫前移后的空间。` : homePressure >= awayPressure ? `${match.home.name}应把当前场面优势转成禁区内射门，重点提高倒三角、第二点和定位球质量。` : `${match.home.name}需要先解决出球受阻问题，减少后场横传，并寻找核心球员面向球门接球。`;
+  const awayNext = awayScore < homeScore ? `${match.away.name}需要增加前场人数和边路宽度，尽快制造射正；如果只依赖外围传中，追分效率会偏低。` : awayScore > homeScore ? `${match.away.name}可以适度回收，但不能完全放弃反击出口，否则防线会承受连续二次进攻。` : awayPressure >= homePressure ? `${match.away.name}应继续利用当前推进路线，同时防止边后卫同时压上后留下反击通道。` : `${match.away.name}需要让抢回球后的第一脚更准确，通过反击或定位球打断对手节奏。`;
+  const nextWindow = minute < 25 ? `接下来重点看首球归属。若当前压力更大的一方进球，比赛会迅速向赛前强势脚本靠拢；若弱势方先进球，热门方的边后卫位置和总射门会明显提高。` : minute < 55 ? `半场前后是首次结构调整窗口。后腰是否吃牌、哪一侧边路体能下降，以及教练是否提前换人，会决定下一波攻势。` : minute < 75 ? `首批换人将直接重塑对位。预计落后方增加速度或中锋，领先方补充中场控制；换人后的前两次进攻最能检验调整效果。` : `比赛进入结果管理阶段。领先方减少失误、落后方增加定位球和禁区人数，二点球与反击选择将比控球率更重要。`;
+  const revision = `实时胜平负已更新为 ${liveProbs[0]}% / ${liveProbs[1]}% / ${liveProbs[2]}%。${homeScore === predicted[0] && awayScore === predicted[1] ? "当前比分已达到赛前预测，但剩余时间仍可能改变最终结果。" : homeScore + awayScore > predicted[0] + predicted[1] ? "实际进球速度高于赛前基准，大球和更开放比分的权重正在上升。" : minute >= 60 && homeScore + awayScore < predicted[0] + predicted[1] ? "实际进球速度低于赛前基准，小比分与平局分支权重正在上升。" : "当前仍处于赛前预测可解释范围内，下一粒进球会带来最大幅度修正。"}`;
+  return { baseline, current, homeNext, awayNext, nextWindow, revision };
 }
 
 function buildPreMatchPreview(match) {
@@ -563,7 +601,10 @@ function eventToMatch(event) {
   };
   if (!rich && market) Object.assign(base, market);
   const status = completed ? "finished" : live ? "live" : "upcoming";
-  return { ...base, id: `espn-${event.id}`, espnId: event.id, homeEnglishName: homeEnglish, awayEnglishName: awayEnglish, kickoff: event.date, dateKey: `${p.month}月${p.day}日`, weekday: p.weekday, time: `${p.hour}:${p.minute}`, date: `${p.month}月${p.day}日 ${p.hour}:${p.minute}`, stage: `${homeMeta?.group || base.home.group || "-"}组 · 小组赛`, status, score: completed || live ? actualScore : base.score, result: completed ? (actualScore[0] > actualScore[1] ? `${base.home.name}胜` : actualScore[0] < actualScore[1] ? `${base.away.name}胜` : "平局") : base.result, liveText: event.status?.type?.shortDetail || event.status?.type?.detail || "进行中" };
+  const predictedScore = [...(base.predictedScore || base.score)];
+  const predictedProbs = [...(base.predictedProbs || base.probs)];
+  const predictedResult = base.predictedResult || base.result;
+  return { ...base, id: `espn-${event.id}`, espnId: event.id, homeEnglishName: homeEnglish, awayEnglishName: awayEnglish, kickoff: event.date, dateKey: `${p.month}月${p.day}日`, weekday: p.weekday, time: `${p.hour}:${p.minute}`, date: `${p.month}月${p.day}日 ${p.hour}:${p.minute}`, stage: `${homeMeta?.group || base.home.group || "-"}组 · 小组赛`, status, predictedScore, predictedProbs, predictedResult, score: completed || live ? actualScore : base.score, result: completed ? (actualScore[0] > actualScore[1] ? `${base.home.name}胜` : actualScore[0] < actualScore[1] ? `${base.away.name}胜` : "平局") : base.result, liveText: event.status?.type?.shortDetail || event.status?.type?.detail || "进行中" };
 }
 
 function tournamentDates() {
