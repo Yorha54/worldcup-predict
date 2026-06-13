@@ -100,8 +100,8 @@ function renderPrediction() {
   $("#predictionType").textContent = finished ? "赛后数据复盘" : isLive ? "实时 AI 分析" : "AI 核心预测";
   $("#modelNote").textContent = finished ? "真实赛果 · AI 复盘比赛走势" : isLive ? "基于场上统计与关键事件 · 每2分钟更新" : "基于赛程、状态、阵容与比赛资讯";
   $("#scoreLabel").textContent = finished ? "真实比分" : isLive ? "实时比分" : "预测比分";
-  $("#trendLabel").textContent = finished ? "赛事实况复盘 · 90'" : isLive ? "场上趋势 · 每2分钟更新" : "AI 模拟 · 90'";
-  $("#processTitle").textContent = finished ? "比赛过程复盘" : isLive ? "实时比赛解读与后续预测" : "AI 推演的比赛过程";
+  $("#trendLabel").textContent = finished ? "赛事实况复盘 · 90'" : isLive ? "场上趋势 · 每2分钟更新" : "详细赛前前瞻 · 90'";
+  $("#processTitle").textContent = finished ? "比赛过程复盘" : isLive ? "实时比赛解读与后续预测" : "赛前战术推演与比赛路径";
   ["home", "away"].forEach(side => {
     $(`#${side}Flag`).textContent = m[side].flag;
     $(`#${side}Name`).textContent = m[side].name;
@@ -243,6 +243,10 @@ function renderMomentum() {
       selectedMatch.process = liveAnalysis.sections.map((text, index) => [`${liveAnalysis.minute || "实时"}'`, liveLabels[index] || "实时走势", text]);
     }
     selectedMatch.moments = liveAnalysis.events.length ? liveAnalysis.events.slice(-3).map(event => [event.time || "事件", translateMatchEvent(event.text, event.type)]) : [[selectedMatch.status === "finished" ? "完场" : `${liveAnalysis.minute || 0}'`, selectedMatch.status === "finished" ? "全场数据已同步" : "实时数据已同步"], ["射门", `${stats.home.totalShots || 0}-${stats.away.totalShots || 0}`], ["控球", `${stats.home.possessionPct || 0}%-${stats.away.possessionPct || 0}%`]];
+  } else if (selectedMatch.status === "upcoming") {
+    const preview = buildPreMatchPreview(selectedMatch);
+    selectedMatch.process = preview.phases;
+    selectedMatch.moments = preview.keyPoints;
   }
   const values = selectedMatch.momentum;
   const points = values.map((value, index) => `${index * (600 / (values.length - 1))},${165 - value * 1.35}`).join(" ");
@@ -254,10 +258,47 @@ function renderMomentum() {
     const review = postMatchReview(selectedMatch, liveAnalysis);
     reviewBox.hidden = false;
     reviewBox.innerHTML = `<h4>全场文字复盘</h4><p><strong>比赛定性：</strong>${review.headline}</p><p><strong>${selectedMatch.home.name}：</strong>${review.homeEvaluation}</p><p><strong>${selectedMatch.away.name}：</strong>${review.awayEvaluation}</p><p><strong>胜负关键：</strong>${review.decisiveFactors}</p><p><strong>后续影响：</strong>${review.nextImpact}</p>`;
+  } else if (selectedMatch.status === "upcoming") {
+    const preview = buildPreMatchPreview(selectedMatch);
+    reviewBox.hidden = false;
+    reviewBox.innerHTML = `<h4>赛前详细前瞻</h4><p><strong>整体判断：</strong>${preview.overview}</p><p><strong>${selectedMatch.home.name}进攻路线：</strong>${preview.homePlan}</p><p><strong>${selectedMatch.away.name}进攻路线：</strong>${preview.awayPlan}</p><p><strong>关键对位：</strong>${preview.matchup}</p><p><strong>风险与转折：</strong>${preview.risks}</p><p><strong>比分发展逻辑：</strong>${preview.scorePath}</p>`;
   } else {
     reviewBox.hidden = true;
     reviewBox.innerHTML = "";
   }
+}
+
+function buildPreMatchPreview(match) {
+  const homeStrength = window.WORLD_CUP_TEAM_STRENGTH?.[match.homeEnglishName] || 68;
+  const awayStrength = window.WORLD_CUP_TEAM_STRENGTH?.[match.awayEnglishName] || 68;
+  const favoriteSide = match.probs[0] >= match.probs[2] ? "home" : "away";
+  const favorite = match[favoriteSide];
+  const underdog = match[favoriteSide === "home" ? "away" : "home"];
+  const gap = Math.abs(homeStrength - awayStrength);
+  const expected = match.expectedGoals || [Math.max(.4, match.score[0] - .1), Math.max(.4, match.score[1] - .1)];
+  const homeStar = match.home.players?.[0];
+  const awayStar = match.away.players?.[0];
+  const homeStyles = match.home.styles?.slice(0, 3).join("、") || "整体推进";
+  const awayStyles = match.away.styles?.slice(0, 3).join("、") || "整体防守与转换";
+  const homeReport = liveRuntime.teamTournamentForm?.[match.homeEnglishName]?.reports?.at(-1);
+  const awayReport = liveRuntime.teamTournamentForm?.[match.awayEnglishName]?.reports?.at(-1);
+  const previousEvidence = [homeReport ? `${match.home.name}上一轮${homeReport.summary}` : "", awayReport ? `${match.away.name}上一轮${awayReport.summary}` : ""].filter(Boolean).join("；");
+  const overview = `${favorite.name}赛前占优，但优势属于${gap >= 25 ? "明显档次差" : gap >= 12 ? "中等实力差" : "接近对局"}。模型预期进球约为 ${expected[0].toFixed(1)}-${expected[1].toFixed(1)}，主比分为 ${match.score[0]}-${match.score[1]}。${favorite.name}更可能主动建立场地优势，${underdog.name}则需要通过降低比赛回合、提高反击质量或定位球效率改变走势。${previousEvidence ? ` 本届世界杯依据：${previousEvidence}。` : ""}`;
+  const homePlan = `${match.home.name}预计围绕“${homeStyles}”展开。${match.home.description} ${homeStar ? `${homeStar.name}是首要观察对象，他担任${homeStar.nationalRole || homeStar.role}，其${homeStar.skills?.join("、") || "个人能力"}能否兑现，将决定球队能否把场面转成射正。` : "球队需要通过中场向前传递把控球转成禁区触球。"}`;
+  const awayPlan = `${match.away.name}预计围绕“${awayStyles}”应对。${match.away.description} ${awayStar ? `${awayStar.name}承担${awayStar.nationalRole || awayStar.role}，如果他能在面向球门的情况下接球，客队就有机会绕开持续防守并制造真正威胁。` : "球队需要保证抢回球后的第一脚传递准确。"}`;
+  const matchup = `${homeStar?.name || `${match.home.name}进攻核心`}与${awayStar?.name || `${match.away.name}核心球员`}是最显眼的球星对照，但真正决定比赛的往往是后腰身侧和边后卫身后。${match.home.name}若能让中场在两次触球内完成转移，会迫使${match.away.name}防线横向移动；反过来，${match.away.name}若能越过第一道压迫，就可能直接面对尚未回位的边后卫。`;
+  const risks = `${favorite.name}最大的风险是久攻不下后阵型过度前压，让${underdog.name}获得开阔反击空间；${underdog.name}的风险则是防线长期承压后第二点保护下降。上半场首球、两队后腰的黄牌以及60分钟前后的第一批换人，是最可能改变模型判断的三个节点。`;
+  const scorePath = `如果${favorite.name}在前30分钟进球，比赛可能从谨慎对局转成更开放的 ${match.score[0]}-${match.score[1]}，强弱差较大时还存在继续扩大到${favoriteSide === "home" ? `${match.score[0] + 1}-${match.score[1]}` : `${match.score[0]}-${match.score[1] + 1}`}的分支。若半场仍为0-0，平局权重会上升，${favorite.name}需要通过边路轮换、定位球或增加禁区人数破局；若${underdog.name}先进球，比赛将进入热门球队高控球追分、弱势方低位保护的完全不同脚本。`;
+  const phases = [
+    ["0–15'", "确认压迫与出球", `${match.home.name}会测试${match.away.name}后场能否承受压迫，同时观察对方边后卫的站位。开局重点不是控球数字，而是哪一队能首次把球送进禁区或肋部。`],
+    ["15–30'", "建立主要攻击方向", `${match.home.name}预计更多使用${match.home.styles?.[0] || "中场推进"}，${match.away.name}则依靠${match.away.styles?.[0] || "防守转换"}回应。连续两到三次攻击同一侧，通常意味着教练已经识别出明确弱点。`],
+    ["30–45+'", "首球与定位球窗口", `比赛强度首次下降后，角球、任意球和禁区前沿第二点价值上升。若${favorite.name}尚未领先，压迫会更主动，也会给${underdog.name}留下本场最清晰的反击窗口。`],
+    ["45–60'", "中场修正", `教练会针对上半场最不顺的出球路线调整。领先方要决定继续压迫还是控制风险；落后方通常会提高边后卫位置，或者增加一名能在禁区内对抗的前锋。`],
+    ["60–75'", "替补重塑对位", `第一批换人预计围绕速度、支点或中场控制展开。重点观察新登场球员先攻击哪一侧，以及此前持续往返的边后卫是否开始出现回防延迟。`],
+    ["75–90+'", "比分驱动的决胜阶段", `若比分接近，定位球、二点球和一次后场失误都可能决定结果。领先方会收窄中路，落后方增加传中和远射；此时球员决策与体能比赛前整体实力更重要。`]
+  ];
+  const keyPoints = [["开局", `${favorite.name}能否迅速建立场地优势`], ["关键对位", `${homeStar?.name || match.home.name} vs ${awayStar?.name || match.away.name}`], ["转折点", "首球归属与60分钟前后的换人"]];
+  return { overview, homePlan, awayPlan, matchup, risks, scorePath, phases, keyPoints };
 }
 
 function postMatchReview(match, analysis) {
