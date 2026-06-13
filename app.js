@@ -56,7 +56,7 @@ function player(name, number, club, role, skills) { return { name, number, club,
 let selectedMatch = matches[0];
 let selectedTab = "history";
 let selectedPlayerTeam = "home";
-let liveRuntime = { mode: "starting", matches: {}, teamTournamentForm: {} };
+let liveRuntime = { mode: "starting", matches: {}, teamTournamentForm: {}, teamHistory: {} };
 let runtimeTimer;
 let scheduleTimer;
 
@@ -377,6 +377,56 @@ function renderIntel() {
   const m = selectedMatch;
   $("#infoTabs").querySelectorAll("button").forEach(button => button.classList.toggle("active", button.dataset.tab === selectedTab));
   $("#intelContent").innerHTML = `${intelCard(m.home, "home")}<div class="versus-badge">VS</div>${intelCard(m.away, "away")}`;
+  renderHeadToHead();
+}
+
+function runtimeTeamHistory(englishName) {
+  const target = normalizeTeamName(englishName);
+  const histories = liveRuntime.teamHistory || {};
+  const direct = histories[englishName] || histories[target];
+  if (direct?.length) return direct;
+  return Object.entries(histories).find(([name]) => normalizeTeamName(name) === target)?.[1] || [];
+}
+
+function resultDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "近期";
+  return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric" }).format(date);
+}
+
+function recentResults(teamData, side) {
+  const history = runtimeTeamHistory(selectedMatch[`${side}EnglishName`]).slice(0, 4);
+  const rows = history.length ? history.map(item => ({
+    date: resultDate(item.date), opponent: item.opponent, score: item.score, result: item.result
+  })) : (teamData.recentMatches || []).slice(0, 4).map(item => ({
+    date: item.date || "近期", opponent: item.opponent, score: item.score, result: item.result || "赛果"
+  }));
+  if (!rows.length) return `<div class="recent-results"><strong>最近4场比赛</strong><p class="recent-empty">后台正在同步该队近期正式比赛，取得数据后会自动显示。</p></div>`;
+  return `<div class="recent-results"><strong>最近4场比赛</strong>${rows.map(item => `<div class="recent-result"><span>${escapeHtml(item.date)}</span><p><i class="result-mark result-${escapeHtml(item.result)}">${escapeHtml(item.result)}</i>${escapeHtml(item.opponent)}</p><b>${escapeHtml(item.score)}</b></div>`).join("")}${rows.length < 4 ? `<small class="recent-note">目前仅同步到 ${rows.length} 场有效赛果</small>` : ""}</div>`;
+}
+
+function renderHeadToHead() {
+  const container = $("#headToHead");
+  container.hidden = selectedTab !== "history";
+  if (container.hidden) return;
+  const homeEnglish = selectedMatch.homeEnglishName;
+  const awayEnglish = selectedMatch.awayEnglishName;
+  const homeHistory = runtimeTeamHistory(homeEnglish).filter(item => normalizeTeamName(item.opponentEnglish) === normalizeTeamName(awayEnglish)).map(item => ({ ...item, sourceSide: "home" }));
+  const awayHistory = runtimeTeamHistory(awayEnglish).filter(item => normalizeTeamName(item.opponentEnglish) === normalizeTeamName(homeEnglish)).map(item => ({ ...item, sourceSide: "away" }));
+  const meetings = [...new Map([...homeHistory, ...awayHistory].map(item => [item.id, item])).values()].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 4);
+  let homeWins = 0, draws = 0, awayWins = 0;
+  const rows = meetings.map(item => {
+    const [ownGoals, opponentGoals] = String(item.score).split("-").map(Number);
+    const homeGoals = item.sourceSide === "home" ? ownGoals : opponentGoals;
+    const awayGoals = item.sourceSide === "away" ? ownGoals : opponentGoals;
+    if (homeGoals > awayGoals) homeWins += 1;
+    else if (homeGoals < awayGoals) awayWins += 1;
+    else draws += 1;
+    const currentHomeWasHome = item.sourceSide === "home" ? item.homeAway === "home" : item.homeAway !== "home";
+    return `<div class="h2h-result"><time>${escapeHtml(resultDate(item.date))}<small>${escapeHtml(item.competition || "国际比赛")}</small></time><p>${selectedMatch.home.flag} ${escapeHtml(selectedMatch.home.name)}（${currentHomeWasHome ? "主" : "客"}）<br>${selectedMatch.away.flag} ${escapeHtml(selectedMatch.away.name)}（${currentHomeWasHome ? "客" : "主"}）</p><strong>${homeGoals}-${awayGoals}</strong></div>`;
+  }).join("");
+  const summary = meetings.length ? `近${meetings.length}次：${selectedMatch.home.name} ${homeWins}胜，平局 ${draws}场，${selectedMatch.away.name} ${awayWins}胜。` : "双方在已同步的近期正式比赛中暂无直接交锋记录；若历史交锋年代较远，页面不会用推测结果补齐。";
+  container.innerHTML = `<article class="h2h-card"><h3>两队近4次直接交锋</h3><p>${escapeHtml(summary)} 按比赛时间由近到远排列。</p>${rows ? `<div class="h2h-results">${rows}</div>` : `<div class="h2h-empty">暂无可核实的近期直接交锋</div>`}</article>`;
 }
 
 function intelCard(teamData, side) {
@@ -385,7 +435,7 @@ function intelCard(teamData, side) {
     const stats = teamData.metrics || (side === "home" ? selectedMatch.history : selectedMatch.awayHistory).map(item => ({ label: item[0], value: item[1], grade: item[2], reason: "综合近期赛果、比赛内容和阵容情况得出。" }));
     const form = liveRuntime.teamTournamentForm?.[selectedMatch[`${side}EnglishName`]];
     const tournamentEvidence = form?.reports?.length ? `<div class="tournament-form"><strong>本届世界杯实战</strong>${form.reports.map(report => `<p>${report.opponent}：${report.score}（${report.result}），控球 ${report.possession}%，射门 ${report.shots} 次、射正 ${report.shotsOnTarget} 次。</p>`).join("")}</div>` : "";
-    const recent = teamData.recentMatches?.length ? `<div class="recent-results"><strong>最近比赛记录</strong>${teamData.recentMatches.map(item => `<div class="recent-result"><span>${item.date || "近期"}</span><p>${item.opponent}</p><b>${item.score}</b></div>`).join("")}</div>` : "";
+    const recent = recentResults(teamData, side);
     body = `<div class="evidence-list">${stats.map(stat => `<div class="evidence-item"><div class="evidence-head"><span>${stat.label}</span><strong>${stat.grade}</strong></div><div class="light-track"><i style="width:${stat.value}%"></i></div><p>${stat.reason}</p></div>`).join("")}</div>${recent}${tournamentEvidence}${intelSources(teamData)}`;
   } else if (selectedTab === "style") {
     const details = teamData.styleDetails || [{ title: "比赛方式", text: teamData.description }];

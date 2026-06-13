@@ -13,15 +13,25 @@ const IDLE_INTERVAL = 3 * 60 * 60 * 1000;
 const runtimePath = path.join(DATA_DIR, "runtime-data.json");
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
-let runtime = readJson(runtimePath, { updatedAt: null, mode: "starting", matches: {}, teamTournamentForm: {}, news: [], schedule: [] });
+let runtime = readJson(runtimePath, { updatedAt: null, mode: "starting", matches: {}, teamTournamentForm: {}, teamHistory: {}, news: [], schedule: [] });
 let timer;
+let historyRefreshPromise;
 const metaSandbox = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(ROOT, "schedule-data.js"), "utf8"), metaSandbox);
 const teamMeta = metaSandbox.window.WORLD_CUP_TEAM_META || {};
 const aliases = metaSandbox.window.WORLD_CUP_TEAM_ALIASES || {};
+const otherTeamZh = {
+  Albania: "阿尔巴尼亚", Andorra: "安道尔", Angola: "安哥拉", Aruba: "阿鲁巴", Azerbaijan: "阿塞拜疆", Bahrain: "巴林", Benin: "贝宁", Bermuda: "百慕大", Bolivia: "玻利维亚", Botswana: "博茨瓦纳", "Burkina Faso": "布基纳法索", Burundi: "布隆迪", Cameroon: "喀麦隆", Chile: "智利", China: "中国", "Costa Rica": "哥斯达黎加", Denmark: "丹麦", "Dominican Republic": "多米尼加", "El Salvador": "萨尔瓦多", Finland: "芬兰", Gabon: "加蓬", Gambia: "冈比亚", Georgia: "格鲁吉亚", Greece: "希腊", Guatemala: "危地马拉", Guinea: "几内亚", Honduras: "洪都拉斯", Hungary: "匈牙利", Iceland: "冰岛", Jamaica: "牙买加", Kazakhstan: "哈萨克斯坦", Kenya: "肯尼亚", Kosovo: "科索沃", Lebanon: "黎巴嫩", Liechtenstein: "列支敦士登", Luxembourg: "卢森堡", Madagascar: "马达加斯加", Malaysia: "马来西亚", Mali: "马里", Malta: "马耳他", Mauritania: "毛里塔尼亚", Mozambique: "莫桑比克", Nicaragua: "尼加拉瓜", Nigeria: "尼日利亚", "North Korea": "朝鲜", "North Macedonia": "北马其顿", "Northern Ireland": "北爱尔兰", Oman: "阿曼", Peru: "秘鲁", Poland: "波兰", "Puerto Rico": "波多黎各", "Republic of Ireland": "爱尔兰", Romania: "罗马尼亚", Russia: "俄罗斯", Rwanda: "卢旺达", "San Marino": "圣马力诺", Serbia: "塞尔维亚", Slovenia: "斯洛文尼亚", Tanzania: "坦桑尼亚", "Trinidad and Tobago": "特立尼达和多巴哥", Uganda: "乌干达", Ukraine: "乌克兰", Venezuela: "委内瑞拉", Wales: "威尔士", Zambia: "赞比亚", Zimbabwe: "津巴布韦"
+};
+const TEAM_HISTORY_SCHEMA = 3;
+if (runtime.teamHistorySchema !== TEAM_HISTORY_SCHEMA) runtime.teamHistoryUpdatedAt = null;
 
 function zhName(name) {
-  return teamMeta[aliases[name] || name]?.name || name;
+  return teamMeta[aliases[name] || name]?.name || otherTeamZh[name] || name;
+}
+
+function zhCompetition(name) {
+  return ({ "International Friendly": "国际友谊赛", "FIFA World Cup": "世界杯" })[name] || name || "国际比赛";
 }
 
 function readJson(file, fallback) {
@@ -34,8 +44,8 @@ function writeRuntime() {
   fs.renameSync(temporary, runtimePath);
 }
 
-async function getJson(url) {
-  const response = await fetch(url, { headers: { "User-Agent": "WorldCupAnalysis/1.0" } });
+async function getJson(url, timeoutMs = 12000) {
+  const response = await fetch(url, { headers: { "User-Agent": "WorldCupAnalysis/1.0" }, signal: AbortSignal.timeout(timeoutMs) });
   if (!response.ok) throw new Error(`${response.status} ${url}`);
   return response.json();
 }
@@ -247,6 +257,57 @@ async function refreshNews() {
   runtime.newsUpdatedAt = new Date().toISOString();
 }
 
+function historyEvent(event, teamId) {
+  const competitors = event.competitions?.[0]?.competitors || [];
+  const own = competitors.find(item => String(item.team?.id) === String(teamId));
+  const opponent = competitors.find(item => String(item.team?.id) !== String(teamId));
+  if (!own || !opponent) return null;
+  const scoreValue = competitor => Number(competitor.score?.value ?? competitor.score?.displayValue ?? competitor.score);
+  const ownScore = scoreValue(own), opponentScore = scoreValue(opponent);
+  const hasScore = Number.isFinite(ownScore) && Number.isFinite(opponentScore);
+  const completed = event.status?.type?.completed || (hasScore && new Date(event.date).getTime() < Date.now());
+  if (!completed || !hasScore) return null;
+  return {
+    id: String(event.id), date: event.date, competition: zhCompetition(event.league?.name || event.season?.name),
+    teamId: String(own.team.id), opponentId: String(opponent.team.id), opponent: zhName(opponent.team.displayName),
+    opponentEnglish: opponent.team.displayName, score: `${ownScore}-${opponentScore}`,
+    homeAway: own.homeAway, result: ownScore > opponentScore ? "胜" : ownScore < opponentScore ? "负" : "平"
+  };
+}
+
+async function getTeamHistory(teamId) {
+  const urls = [
+    `${SCOREBOARD}/teams/${teamId}/schedule?season=2026&limit=100`,
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.friendly/teams/${teamId}/schedule?season=2026&limit=100`,
+    `${SCOREBOARD}/teams/${teamId}/schedule?season=2025&limit=100`,
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.friendly/teams/${teamId}/schedule?season=2025&limit=100`
+  ];
+  const events = new Map();
+  const payloads = await Promise.allSettled(urls.map(url => getJson(url, 8000)));
+  payloads.forEach(result => {
+    if (result.status === "fulfilled") {
+      const payload = result.value;
+      (payload.events || []).forEach(event => events.set(String(event.id), event));
+    }
+  });
+  return [...events.values()].map(event => historyEvent(event, teamId)).filter(Boolean).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 40);
+}
+
+async function refreshTeamHistory(events) {
+  const teams = new Map();
+  events.forEach(event => (event.competitions?.[0]?.competitors || []).forEach(item => teams.set(String(item.team?.id), item.team.displayName)));
+  const entries = [...teams.entries()];
+  const nextHistory = { ...(runtime.teamHistory || {}) };
+  for (let start = 0; start < entries.length; start += 12) {
+    const batch = entries.slice(start, start + 12);
+    const results = await Promise.all(batch.map(async ([id, name]) => [name, await getTeamHistory(id)]));
+    results.forEach(([name, history]) => { if (history.length) nextHistory[name] = history; });
+  }
+  runtime.teamHistory = nextHistory;
+  runtime.teamHistorySchema = TEAM_HISTORY_SCHEMA;
+  runtime.teamHistoryUpdatedAt = new Date().toISOString();
+}
+
 async function translateTitle(title) {
   if (!/[A-Za-z]/.test(title) || /[\u3400-\u9fff]/.test(title)) return title;
   try {
@@ -288,6 +349,10 @@ async function update() {
     runtime.schedule = events;
     const newsIsStale = !runtime.newsUpdatedAt || Date.now() - new Date(runtime.newsUpdatedAt).getTime() >= IDLE_INTERVAL;
     if (!liveEvents.length && newsIsStale) await refreshNews();
+    const historyIsStale = !runtime.teamHistoryUpdatedAt || Date.now() - new Date(runtime.teamHistoryUpdatedAt).getTime() >= IDLE_INTERVAL;
+    if (historyIsStale && !historyRefreshPromise) {
+      historyRefreshPromise = refreshTeamHistory(events).then(() => writeRuntime()).catch(error => console.error("team history", error.message)).finally(() => { historyRefreshPromise = null; });
+    }
     runtime.updatedAt = new Date().toISOString();
     runtime.mode = liveEvents.length ? "live" : "idle";
     const delay = nextDelay(events, liveEvents);

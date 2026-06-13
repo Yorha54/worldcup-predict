@@ -123,6 +123,16 @@ main { overflow: hidden; }
 .recent-result { display: grid; grid-template-columns: 54px 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 10px; }
 .recent-result span { color: var(--muted); }
 .recent-result b { color: var(--lime); }
+.intel-card .recent-results { border-top-color: #edf0e9; }
+.intel-card .recent-result { border-bottom-color: #edf0e9; }
+.intel-card .recent-result span { color: #7b857e; }
+.intel-card .recent-result p { display: flex; align-items: center; gap: 7px; margin: 0; color: #33483e; }
+.intel-card .recent-result b { color: #174b38; font-size: 12px; }
+.result-mark { min-width: 20px; padding: 2px 4px; color: #fff; background: #718078; border-radius: 4px; font-size: 8px; font-style: normal; text-align: center; }
+.result-胜 { background: #1d6048; }
+.result-负 { background: #a75248; }
+.result-平 { background: #88773d; }
+.recent-note, .recent-empty { display: block; margin: 8px 0 0; color: #89928c; font-size: 9px; line-height: 1.6; }
 .ai-summary { margin: 20px 0 0; padding: 15px 18px; color: #c1d0ca; background: #071d16; border-left: 2px solid var(--lime); border-radius: 0 9px 9px 0; font-size: 12px; line-height: 1.8; }
 .card-title > div { display: flex; align-items: center; }
 .card-title h3 { margin: 0; font-size: 16px; }
@@ -176,6 +186,18 @@ body.light .full-match-review p { color: #42564c; }
 .tournament-form { margin-top: 16px; padding: 13px 14px; background: #eef4ed; border-left: 3px solid #1d6048; border-radius: 0 9px 9px 0; }
 .tournament-form strong { color: #1d6048; font-size: 10px; }
 .tournament-form p { margin: 6px 0 0; color: #5e6c63; font-size: 10px; line-height: 1.65; }
+.head-to-head { margin-top: 22px; }
+.head-to-head[hidden] { display: none; }
+.h2h-card { padding: 24px 26px; background: #fff; border: 1px solid #dfe3da; border-radius: 18px; }
+.h2h-card h3 { margin: 0; font-size: 17px; }
+.h2h-card > p { margin: 7px 0 18px; color: #78827b; font-size: 10px; }
+.h2h-results { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.h2h-result { display: grid; grid-template-columns: 74px 1fr auto; gap: 12px; align-items: center; padding: 13px 15px; background: #f4f6f1; border-radius: 10px; }
+.h2h-result time, .h2h-result small { color: #7b857e; font-size: 9px; }
+.h2h-result time small { display: block; margin-top: 4px; }
+.h2h-result p { margin: 0; color: #33483e; font-size: 11px; }
+.h2h-result strong { color: #174b38; font: 700 18px "Barlow Condensed", sans-serif; }
+.h2h-empty { padding: 20px; color: #69766e; text-align: center; background: #f4f6f1; border-radius: 10px; font-size: 10px; }
 .coach-block { display: flex; gap: 17px; align-items: center; }
 .coach-avatar { display: grid; flex: 0 0 62px; height: 62px; place-items: center; color: white; background: #174b38; border-radius: 50%; font: 700 24px "Barlow Condensed", sans-serif; }
 .coach-block h4 { margin: 0 0 4px; font-size: 15px; }
@@ -233,6 +255,7 @@ body.light footer { background: #dfe7dc; }
   .intel-grid { grid-template-columns: 1fr; }
   .versus-badge { min-height: 35px; }
   .player-grid, .process-grid { grid-template-columns: repeat(2, 1fr); }
+  .h2h-results { grid-template-columns: 1fr; }
   .news-list { grid-template-columns: 1fr; }
 }
 
