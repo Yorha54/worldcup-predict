@@ -515,10 +515,10 @@ function normalizeTeamName(name) {
 function genericTeam(englishName) {
   const key = normalizeTeamName(englishName);
   const chineseName = window.WORLD_CUP_TEAM_META?.[key]?.name;
-  const existing = richMatches.flatMap(match => [match.home, match.away]).find(teamData => teamData.name === chineseName && teamData.players?.length);
-  if (existing) return { ...existing, englishName: key };
   const detailed = window.WORLD_CUP_TEAM_PROFILES?.[key];
   if (detailed) return { ...detailed, englishName: key };
+  const existing = richMatches.flatMap(match => [match.home, match.away]).find(teamData => teamData.name === chineseName && teamData.players?.length);
+  if (existing) return { ...existing, englishName: key };
   const meta = window.WORLD_CUP_TEAM_META?.[key] || { name: englishName, flag: "🏳️", group: "-" };
   const strength = window.WORLD_CUP_TEAM_STRENGTH?.[key] || 68;
   const tier = strength >= 88 ? "争冠级" : strength >= 80 ? "强队级" : strength >= 72 ? "出线竞争级" : "挑战者";
