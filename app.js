@@ -93,8 +93,9 @@ function renderPrediction() {
     m.score = liveAnalysis.score;
     m.confidence = liveAnalysis.confidence || m.confidence;
   }
-  $("#confidenceValue").innerHTML = `${m.confidence}<small>%</small>`;
-  $("#confidenceBar").style.width = `${m.confidence}%`;
+  $("#confidenceLabel").textContent = finished ? "赛后数据状态" : "模型综合信心";
+  $("#confidenceValue").innerHTML = finished ? "完整" : `${m.confidence}<small>%</small>`;
+  $("#confidenceBar").style.width = finished ? "100%" : `${m.confidence}%`;
   $("#matchMeta").textContent = `${m.date} · ${m.stage}`;
   $("#predictionType").textContent = finished ? "赛后数据复盘" : isLive ? "实时 AI 分析" : "AI 核心预测";
   $("#modelNote").textContent = finished ? "真实赛果 · AI 复盘比赛走势" : isLive ? "基于场上统计与关键事件 · 每2分钟更新" : "基于赛程、状态、阵容与比赛资讯";
@@ -109,9 +110,13 @@ function renderPrediction() {
   $("#homeScore").textContent = m.score[0];
   $("#awayScore").textContent = m.score[1];
   $("#resultBadge").textContent = finished ? `完场 · ${m.result}` : m.result;
-  $("#aiSummary").textContent = liveAnalysis?.sections?.join(" ") || tournamentAdjustedSummary(m);
-  const labels = finished ? ["控球优势", "机会转化", "防守稳定"] : [`${m.home.name}胜`, "平局", `${m.away.name}胜`];
-  $("#probabilities").innerHTML = m.probs.map((value, index) => `<div class="prob-item"><div><span>${labels[index]}</span><strong>${value}%</strong></div><div class="prob-track"><i style="width:${value}%"></i></div></div>`).join("");
+  const review = finished ? postMatchReview(m, liveAnalysis) : null;
+  $("#aiSummary").textContent = review?.headline || liveAnalysis?.sections?.join(" ") || tournamentAdjustedSummary(m);
+  if (finished && liveAnalysis) renderFinishedStats(m, liveAnalysis);
+  else {
+    const labels = [`${m.home.name}胜`, "平局", `${m.away.name}胜`];
+    $("#probabilities").innerHTML = m.probs.map((value, index) => `<div class="prob-item"><div><span>${labels[index]}</span><strong>${value}%</strong></div><div class="prob-track"><i style="width:${value}%"></i></div></div>`).join("");
+  }
   renderSidePredictions(m, liveAnalysis);
   renderMomentum();
   renderIntel();
@@ -120,7 +125,35 @@ function renderPrediction() {
   renderProcess();
 }
 
+function renderFinishedStats(match, analysis) {
+  const hs = analysis.stats.home, as = analysis.stats.away;
+  const cards = [
+    ["控球率", `${hs.possessionPct || 0}% - ${as.possessionPct || 0}%`, hs.possessionPct || 50],
+    ["射门", `${hs.totalShots || 0} - ${as.totalShots || 0}`, (hs.totalShots || 0) / Math.max(1, (hs.totalShots || 0) + (as.totalShots || 0)) * 100],
+    ["射正", `${hs.shotsOnTarget || 0} - ${as.shotsOnTarget || 0}`, (hs.shotsOnTarget || 0) / Math.max(1, (hs.shotsOnTarget || 0) + (as.shotsOnTarget || 0)) * 100]
+  ];
+  $("#probabilities").innerHTML = cards.map(([label, value, width]) => `<div class="prob-item"><div><span>${label}</span><strong>${value}</strong></div><div class="prob-track"><i style="width:${clamp(Math.round(width), 4, 96)}%"></i></div></div>`).join("");
+}
+
 function renderSidePredictions(match, liveAnalysis) {
+  if (match.status === "finished" && liveAnalysis) {
+    const hs = liveAnalysis.stats.home, as = liveAnalysis.stats.away;
+    const goals = liveAnalysis.score[0] + liveAnalysis.score[1];
+    const corners = (hs.wonCorners || 0) + (as.wonCorners || 0);
+    const fouls = (hs.foulsCommitted || 0) + (as.foulsCommitted || 0);
+    const yellow = (hs.yellowCards || 0) + (as.yellowCards || 0);
+    const red = (hs.redCards || 0) + (as.redCards || 0);
+    const cards = [
+      ["实际总进球", `${goals} 球`, `最终比分 ${liveAnalysis.score[0]}-${liveAnalysis.score[1]}`],
+      ["2.5球赛果", goals >= 3 ? "大球" : "小球", goals >= 3 ? "全场至少产生3球" : "全场不超过2球"],
+      ["双方均进球", liveAnalysis.score[0] > 0 && liveAnalysis.score[1] > 0 ? "是" : "否", "依据最终赛果，不再是概率预测"],
+      ["实际角球", `${corners} 个`, `${match.home.name} ${hs.wonCorners || 0} - ${as.wonCorners || 0} ${match.away.name}`],
+      ["全场犯规", `${fouls} 次`, `${match.home.name} ${hs.foulsCommitted || 0} - ${as.foulsCommitted || 0} ${match.away.name}`],
+      ["牌数", `黄牌 ${yellow} · 红牌 ${red}`, "真实比赛纪律数据"]
+    ];
+    $("#sidePredictions").innerHTML = cards.map(([label, value, note]) => `<div class="side-prediction"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join("");
+    return;
+  }
   const side = buildSidePredictions(match, liveAnalysis);
   const cards = [
     ["全场总进球", `${side.totalGoals} 球`, side.totalText],
@@ -141,12 +174,18 @@ function buildSidePredictions(match, liveAnalysis) {
   const stats = liveAnalysis?.stats;
   const shotQuality = stats ? ((stats.home.shotsOnTarget || 0) + (stats.away.shotsOnTarget || 0)) * .16 + ((stats.home.totalShots || 0) + (stats.away.totalShots || 0)) * .025 : 0;
   const remainingFactor = liveAnalysis ? Math.max(0, (95 - minute) / 95) : 1;
-  const expected = liveAnalysis ? currentGoals + Math.max(.15, (2.25 + gap / 45 + shotQuality) * remainingFactor) : 2.2 + gap / 35 + (Math.min(match.probs[0], match.probs[2]) > 25 ? .25 : 0);
+  const preMatchExpected = match.expectedGoals?.length ? match.expectedGoals[0] + match.expectedGoals[1] : 2.2 + gap / 35 + (Math.min(match.probs[0], match.probs[2]) > 25 ? .25 : 0);
+  const expected = liveAnalysis ? currentGoals + Math.max(.15, (preMatchExpected + shotQuality) * remainingFactor) : preMatchExpected;
   const totalGoals = Math.max(currentGoals, Math.min(6, Math.round(expected)));
-  const over = Math.max(currentGoals >= 3 ? 94 : 14, Math.min(92, Math.round(43 + (expected - 2.35) * 24 + currentGoals * 5)));
-  const btts = Math.max((liveAnalysis?.score[0] > 0 && liveAnalysis?.score[1] > 0) ? 100 : 18, Math.min(82, Math.round(38 + Math.min(match.probs[0], match.probs[2]) * .55 + (stats ? Math.min(stats.home.shotsOnTarget || 0, stats.away.shotsOnTarget || 0) * 5 : 0))));
+  const overBase = 1 - Math.exp(-expected) * (1 + expected + expected * expected / 2);
+  const over = currentGoals >= 3 ? 100 : clamp(Math.round(overBase * 100 + currentGoals * 3), 8, 96);
+  const homeExpected = liveAnalysis ? Math.max(liveAnalysis.score[0], (match.expectedGoals?.[0] || expected / 2) * remainingFactor + liveAnalysis.score[0]) : (match.expectedGoals?.[0] || expected / 2);
+  const awayExpected = liveAnalysis ? Math.max(liveAnalysis.score[1], (match.expectedGoals?.[1] || expected / 2) * remainingFactor + liveAnalysis.score[1]) : (match.expectedGoals?.[1] || expected / 2);
+  const bttsBase = (1 - Math.exp(-homeExpected)) * (1 - Math.exp(-awayExpected));
+  const btts = (liveAnalysis?.score[0] > 0 && liveAnalysis?.score[1] > 0) ? 100 : clamp(Math.round(bttsBase * 100), 10, 88);
   const primary = match.score || [1, 1];
-  const candidates = [[primary[0], primary[1]], [Math.max(0, primary[0] - 1), primary[1]], [primary[0], Math.max(0, primary[1] - 1)], [primary[0] + 1, primary[1]], [primary[0], primary[1] + 1]];
+  const modelCandidates = match.scoreCandidates?.map(item => item.score) || [];
+  const candidates = [primary, ...modelCandidates, [primary[0] + 1, primary[1]], [primary[0], primary[1] + 1], [Math.max(0, primary[0] - 1), primary[1]]];
   const scores = [...new Set(candidates.map(score => `${score[0]}-${score[1]}`))].filter(score => !liveAnalysis || score.split("-").every((value, index) => Number(value) >= liveAnalysis.score[index])).slice(0, 3);
   const currentCorners = stats ? (stats.home.wonCorners || 0) + (stats.away.wonCorners || 0) : 0;
   const projectedCorners = liveAnalysis ? currentCorners + Math.round(Math.max(0, 9.5 - currentCorners) * remainingFactor) : Math.round(8 + gap / 18);
@@ -163,6 +202,15 @@ function adjustPredictionForTournamentForm(match) {
   const total = adjusted.reduce((sum, value) => sum + value, 0);
   match.probs = adjusted.map(value => Math.round(value / total * 100));
   match.probs[1] += 100 - match.probs.reduce((sum, value) => sum + value, 0);
+  const attackEvidence = form => form?.played ? form.goalsFor / form.played + (form.reports?.at(-1)?.shotsOnTarget || 0) * .08 : 1.15;
+  const defensiveEvidence = form => form?.played ? form.goalsAgainst / form.played : 1;
+  const tournamentGoalAdjustment = clamp((attackEvidence(homeForm) + attackEvidence(awayForm) - 2.3) * .18 + (defensiveEvidence(homeForm) + defensiveEvidence(awayForm) - 2) * .1, -.35, .65);
+  const distribution = scoreDistribution(match.homeEnglishName, match.awayEnglishName, match.probs, match.marketTotal, tournamentGoalAdjustment);
+  const modeled = predictionFromDistribution(distribution, match.home.name, match.away.name);
+  match.score = modeled.score;
+  match.result = modeled.result;
+  match.expectedGoals = modeled.expectedGoals;
+  match.scoreCandidates = modeled.scoreCandidates;
 }
 
 function tournamentAdjustedSummary(match) {
@@ -180,15 +228,70 @@ function renderMomentum() {
     selectedMatch.momentum = [50, homePressure, awayPressure, homePressure, awayPressure, Math.max(homePressure, awayPressure), Math.min(homePressure, awayPressure), homePressure, awayPressure, homePressure, awayPressure, 55];
     selectedMatch.probs = liveAnalysis.probabilities;
     selectedMatch.score = liveAnalysis.score;
-    const liveLabels = ["比分与控球", "射门与机会质量", "推进方式与压迫", "定位球与比赛纪律", "体能、换人与薄弱区域", selectedMatch.status === "finished" ? "赛后战术结论" : "未来阶段推演"];
-    selectedMatch.process = liveAnalysis.sections.map((text, index) => [selectedMatch.status === "finished" ? "全场" : `${liveAnalysis.minute || "实时"}'`, liveLabels[index] || "实时走势", text]);
-    selectedMatch.moments = liveAnalysis.events.length ? liveAnalysis.events.slice(-3).map(event => [event.time || "事件", event.text]) : [[`${liveAnalysis.minute || 0}'`, "实时数据已同步"], ["射门", `${stats.home.totalShots || 0}-${stats.away.totalShots || 0}`], ["控球", `${stats.home.possessionPct || 0}%-${stats.away.possessionPct || 0}%`]];
+    if (selectedMatch.status === "finished") {
+      const review = postMatchReview(selectedMatch, liveAnalysis);
+      selectedMatch.process = [
+        ["全场", "比赛结果", review.headline],
+        ["全场", `${selectedMatch.home.name}表现`, review.homeEvaluation],
+        ["全场", `${selectedMatch.away.name}表现`, review.awayEvaluation],
+        ["全场", "机会与效率", `全场射门 ${stats.home.totalShots || 0}-${stats.away.totalShots || 0}，射正 ${stats.home.shotsOnTarget || 0}-${stats.away.shotsOnTarget || 0}，角球 ${stats.home.wonCorners || 0}-${stats.away.wonCorners || 0}。这些是真实赛后数据，不再是趋势预测。`],
+        ["全场", "胜负关键", review.decisiveFactors],
+        ["赛后", "下一轮影响", review.nextImpact]
+      ];
+    } else {
+      const liveLabels = ["比分与控球", "射门与机会质量", "推进方式与压迫", "定位球与比赛纪律", "体能、换人与薄弱区域", "未来阶段推演"];
+      selectedMatch.process = liveAnalysis.sections.map((text, index) => [`${liveAnalysis.minute || "实时"}'`, liveLabels[index] || "实时走势", text]);
+    }
+    selectedMatch.moments = liveAnalysis.events.length ? liveAnalysis.events.slice(-3).map(event => [event.time || "事件", translateMatchEvent(event.text, event.type)]) : [[selectedMatch.status === "finished" ? "完场" : `${liveAnalysis.minute || 0}'`, selectedMatch.status === "finished" ? "全场数据已同步" : "实时数据已同步"], ["射门", `${stats.home.totalShots || 0}-${stats.away.totalShots || 0}`], ["控球", `${stats.home.possessionPct || 0}%-${stats.away.possessionPct || 0}%`]];
   }
   const values = selectedMatch.momentum;
   const points = values.map((value, index) => `${index * (600 / (values.length - 1))},${165 - value * 1.35}`).join(" ");
   $("#momentumLine").setAttribute("points", points);
   $("#areaPath").setAttribute("d", `M ${points.replaceAll(" ", " L ")} L 600 170 L 0 170 Z`);
   $("#keyMoments").innerHTML = selectedMatch.moments.map(item => `<div class="moment"><strong>${item[0]}</strong>${item[1]}</div>`).join("");
+  const reviewBox = $("#fullMatchReview");
+  if (selectedMatch.status === "finished" && liveAnalysis) {
+    const review = postMatchReview(selectedMatch, liveAnalysis);
+    reviewBox.hidden = false;
+    reviewBox.innerHTML = `<h4>全场文字复盘</h4><p><strong>比赛定性：</strong>${review.headline}</p><p><strong>${selectedMatch.home.name}：</strong>${review.homeEvaluation}</p><p><strong>${selectedMatch.away.name}：</strong>${review.awayEvaluation}</p><p><strong>胜负关键：</strong>${review.decisiveFactors}</p><p><strong>后续影响：</strong>${review.nextImpact}</p>`;
+  } else {
+    reviewBox.hidden = true;
+    reviewBox.innerHTML = "";
+  }
+}
+
+function postMatchReview(match, analysis) {
+  if (analysis?.review) return analysis.review;
+  const hs = analysis?.stats?.home || {}, as = analysis?.stats?.away || {};
+  const [homeScore, awayScore] = analysis?.score || match.score;
+  const winner = homeScore > awayScore ? match.home.name : awayScore > homeScore ? match.away.name : null;
+  const headline = winner ? `${winner}以 ${homeScore}-${awayScore} 取胜。比赛已经结束，评价依据真实比分和全场数据，不再引用赛前预测。` : `双方以 ${homeScore}-${awayScore} 战平。比赛已经结束，以下内容依据全场真实数据复盘。`;
+  const evaluate = (name, own, other, scored, conceded) => `${name}控球 ${own.possessionPct || 0}%，射门 ${own.totalShots || 0} 次、射正 ${own.shotsOnTarget || 0} 次、角球 ${own.wonCorners || 0} 个。${scored > conceded ? "球队在关键回合的处理更准确，并成功把机会转化为胜势。" : scored < conceded ? (own.shotsOnTarget >= other.shotsOnTarget ? "创造机会并不少，但门前效率和防守关键回合不如对手。" : "推进未能稳定转化成高质量射门，落后后也缺少持续压制。") : "整体表现足以拿分，但距离胜利仍差更稳定的最后一传和终结。"}`;
+  return { headline, homeEvaluation: evaluate(match.home.name, hs, as, homeScore, awayScore), awayEvaluation: evaluate(match.away.name, as, hs, awayScore, homeScore), decisiveFactors: `射正 ${hs.shotsOnTarget || 0}-${as.shotsOnTarget || 0}、角球 ${hs.wonCorners || 0}-${as.wonCorners || 0}。${winner ? `${winner}在决定比分的回合中更有效率。` : "双方均未建立足以改变平局的效率优势。"}`, nextImpact: "本场数据会写入两队世界杯档案，并用于修正下一轮的攻防评价、预期进球和胜平负概率。" };
+}
+
+function translateMatchEvent(text, type) {
+  if (!text) return "比赛关键事件";
+  if (!/[A-Za-z]/.test(text) || /[\u3400-\u9fff]/.test(text)) return text;
+  const localizeTeams = value => Object.entries(window.WORLD_CUP_TEAM_META || {}).reduce((result, [english, meta]) => result.replaceAll(english, meta.name), value);
+  let match;
+  if ((type === "Goal" || text.startsWith("Goal!")) && (match = text.match(/Goal!\s*([^.]*)\.\s*([^.(]+)(?:\s*\(([^)]+)\))?/i))) {
+    const assist = text.match(/Assisted by ([^.]+)\./i)?.[1];
+    return `进球：${match[2].trim()}破门，比分变为 ${localizeTeams(match[1].trim())}${assist ? `，助攻：${assist.trim()}` : ""}。`;
+  }
+  if ((type === "Substitution" || text.startsWith("Substitution")) && (match = text.match(/Substitution,\s*([^.]+)\.\s*([^.]*) replaces ([^.]+)\./i))) return `换人：${localizeTeams(match[1].trim())}用 ${match[2].trim()} 换下 ${match[3].trim()}。`;
+  if (/red card/i.test(text) || type === "Red Card") {
+    const player = text.match(/^([^.(]+)/)?.[1]?.trim() || "一名球员";
+    const team = text.match(/\(([^)]+)\)/)?.[1];
+    return `红牌：${player}${team ? `（${localizeTeams(team)}）` : ""}被罚下，场上人数发生变化。`;
+  }
+  if (/yellow card/i.test(text) || type === "Yellow Card") {
+    const player = text.match(/^([^.(]+)/)?.[1]?.trim() || "一名球员";
+    const team = text.match(/\(([^)]+)\)/)?.[1];
+    return `黄牌：${player}${team ? `（${localizeTeams(team)}）` : ""}因本次犯规受到警告。`;
+  }
+  if (/penalty/i.test(text) || type === "Penalty") return "点球事件：裁判判罚点球，这次判罚直接影响了比赛的重要阶段。";
+  return "比赛关键事件已记录，后台将继续整理为中文说明。";
 }
 
 function renderIntel() {
@@ -282,6 +385,9 @@ function normalizeTeamName(name) {
 
 function genericTeam(englishName) {
   const key = normalizeTeamName(englishName);
+  const chineseName = window.WORLD_CUP_TEAM_META?.[key]?.name;
+  const existing = richMatches.flatMap(match => [match.home, match.away]).find(teamData => teamData.name === chineseName && teamData.players?.length);
+  if (existing) return { ...existing, englishName: key };
   const detailed = window.WORLD_CUP_TEAM_PROFILES?.[key];
   if (detailed) return { ...detailed, englishName: key };
   const meta = window.WORLD_CUP_TEAM_META?.[key] || { name: englishName, flag: "🏳️", group: "-" };
@@ -303,7 +409,59 @@ function impliedProbability(americanOdds) {
   return odds < 0 ? Math.abs(odds) / (Math.abs(odds) + 100) : 100 / (odds + 100);
 }
 
-function marketPrediction(event, homeName, awayName) {
+function clamp(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function poissonProbability(goals, expected) {
+  let factorial = 1;
+  for (let value = 2; value <= goals; value += 1) factorial *= value;
+  return Math.exp(-expected) * Math.pow(expected, goals) / factorial;
+}
+
+function scoreDistribution(homeEnglish, awayEnglish, probs, marketTotal, totalAdjustment = 0) {
+  const strengths = window.WORLD_CUP_TEAM_STRENGTH || {};
+  const attacks = window.WORLD_CUP_TEAM_ATTACK || strengths;
+  const defences = window.WORLD_CUP_TEAM_DEFENCE || strengths;
+  const homeStrength = strengths[homeEnglish] || 68;
+  const awayStrength = strengths[awayEnglish] || 68;
+  const homeAttack = attacks[homeEnglish] || homeStrength;
+  const awayAttack = attacks[awayEnglish] || awayStrength;
+  const homeDefence = defences[homeEnglish] || homeStrength;
+  const awayDefence = defences[awayEnglish] || awayStrength;
+  const mismatch = Math.abs(homeStrength - awayStrength);
+  const attackAverage = (homeAttack + awayAttack) / 2;
+  const weakDefence = Math.max(0, 70 - Math.min(homeDefence, awayDefence));
+  const blowoutUplift = clamp(Math.max(0, mismatch - 27) * .06 + Math.max(0, 60 - Math.min(homeDefence, awayDefence)) * .015, 0, .5);
+  const baselineTotal = 2.25 + (attackAverage - 72) * .02 + mismatch * .027 + weakDefence * .018 + blowoutUplift;
+  const expectedTotal = clamp((marketTotal ? Number(marketTotal) + mismatch * .02 + Math.max(0, attackAverage - 82) * .01 + blowoutUplift * .7 : baselineTotal) + totalAdjustment, 1.55, 5.1);
+  const probabilityEdge = (probs[0] - probs[2]) / 100;
+  const ratingEdge = ((homeAttack - awayDefence) - (awayAttack - homeDefence)) / 55;
+  const expectedDifference = clamp(probabilityEdge * expectedTotal * 1.08 + ratingEdge, -expectedTotal + .28, expectedTotal - .28);
+  const homeExpected = clamp((expectedTotal + expectedDifference) / 2, .14, 4.35);
+  const awayExpected = clamp((expectedTotal - expectedDifference) / 2, .14, 4.35);
+  const scores = [];
+  for (let home = 0; home <= 7; home += 1) {
+    for (let away = 0; away <= 7; away += 1) {
+      scores.push({ score: [home, away], probability: poissonProbability(home, homeExpected) * poissonProbability(away, awayExpected) });
+    }
+  }
+  scores.sort((a, b) => b.probability - a.probability);
+  return { homeExpected, awayExpected, expectedTotal: homeExpected + awayExpected, scores };
+}
+
+function predictionFromDistribution(distribution, homeName, awayName) {
+  let score = [Math.round(distribution.homeExpected), Math.round(distribution.awayExpected)];
+  if (score[0] === 0 && score[1] === 0 && distribution.expectedTotal >= 1.5) score = [1, 1];
+  return {
+    score,
+    result: score[0] > score[1] ? `${homeName}胜` : score[0] < score[1] ? `${awayName}胜` : "平局",
+    expectedGoals: [distribution.homeExpected, distribution.awayExpected],
+    scoreCandidates: distribution.scores.slice(0, 6).map(item => ({ score: item.score, probability: Math.round(item.probability * 1000) / 10 }))
+  };
+}
+
+function marketPrediction(event, homeEnglish, awayEnglish, homeName, awayName) {
   const market = event.competitions?.[0]?.odds?.[0];
   const moneyline = market?.moneyline;
   if (!moneyline) return null;
@@ -312,15 +470,15 @@ function marketPrediction(event, homeName, awayName) {
   const total = raw.reduce((sum, value) => sum + value, 0);
   const probs = raw.map(value => Math.round(value / total * 100));
   probs[1] += 100 - probs.reduce((sum, value) => sum + value, 0);
-  const expectedGoals = Number(market.overUnder || 2.5);
+  const marketTotal = Number(market.overUnder || 2.5);
   const favorite = probs[0] > probs[2] ? "home" : "away";
   const gap = Math.abs(probs[0] - probs[2]);
-  const score = expectedGoals >= 3 ? (favorite === "home" ? [2, 1] : [1, 2]) : gap > 35 ? (favorite === "home" ? [2, 0] : [0, 2]) : gap > 15 ? (favorite === "home" ? [1, 0] : [0, 1]) : [1, 1];
-  const result = score[0] > score[1] ? `${homeName}胜` : score[0] < score[1] ? `${awayName}胜` : "平局";
+  const distribution = scoreDistribution(homeEnglish, awayEnglish, probs, marketTotal);
+  const modeled = predictionFromDistribution(distribution, homeName, awayName);
   const favoriteName = favorite === "home" ? homeName : awayName;
   const underdogName = favorite === "home" ? awayName : homeName;
   const confidence = Math.min(90, Math.max(60, Math.round(62 + gap * .42 + (market ? 5 : 0))));
-  return { probs, score, result, confidence, summary: `赛前综合概率显示${favoriteName}占优，但优势程度为${gap > 35 ? "明显" : gap > 18 ? "中等" : "有限"}。模型预计总进球约 ${expectedGoals} 球：${favoriteName}更可能主动掌握场面，${underdogName}需要通过防守转换、定位球或对手失误制造机会。若前30分钟仍未进球，平局概率会提高；若热门球队先入球，比赛会转向控球管理和反击空间。模型信心 ${confidence}% 来自市场共识差距、总进球预期、实时阵容与本届世界杯实战修正，并不等同于主队胜率。` };
+  return { probs, ...modeled, marketTotal, confidence, summary: `赛前综合概率显示${favoriteName}占优，优势程度为${gap > 35 ? "明显" : gap > 18 ? "中等" : "有限"}。进球模型给出的预期为 ${distribution.homeExpected.toFixed(1)}-${distribution.awayExpected.toFixed(1)}，总进球约 ${distribution.expectedTotal.toFixed(1)} 球；因此强弱悬殊时会保留大胜和大球分支，而不是固定压成2-0。${underdogName}需要通过防守转换、定位球或门将表现压低热门球队的机会转化。模型信心 ${confidence}% 来自市场概率、攻防评级、总进球盘口、阵容与本届世界杯实战修正。` };
 }
 
 function baselinePrediction(homeEnglish, awayEnglish, homeName, awayName) {
@@ -336,9 +494,10 @@ function baselinePrediction(homeEnglish, awayEnglish, homeName, awayName) {
   probs[1] += 100 - probs.reduce((sum, value) => sum + value, 0);
   const gap = Math.abs(probs[0] - probs[2]);
   const favorite = probs[0] >= probs[2] ? homeName : awayName;
-  const score = gap > 35 ? (probs[0] > probs[2] ? [2, 0] : [0, 2]) : gap > 14 ? (probs[0] > probs[2] ? [2, 1] : [1, 2]) : [1, 1];
+  const distribution = scoreDistribution(homeEnglish, awayEnglish, probs);
+  const modeled = predictionFromDistribution(distribution, homeName, awayName);
   const confidence = Math.max(58, Math.min(78, Math.round(58 + gap * .3)));
-  return { probs, score, confidence, result: score[0] > score[1] ? `${homeName}胜` : score[0] < score[1] ? `${awayName}胜` : "平局", summary: `基础实力模型认为${favorite}略占优势。当前信心 ${confidence}% 来自球队长期竞争力、赛区强度与主场因素；获得正式首发、伤病、市场概率和本届世界杯实战数据后会自动提高或下调。比赛若长期维持平局，弱势一方的防守信心会增加，强势一方则需要通过边路、定位球或换人提升机会质量。` };
+  return { probs, ...modeled, confidence, summary: `基础攻防模型认为${favorite}占优，预期进球为 ${distribution.homeExpected.toFixed(1)}-${distribution.awayExpected.toFixed(1)}，总进球约 ${distribution.expectedTotal.toFixed(1)}。实力差、进攻上限和弱侧防守会共同影响净胜球，因此可能出现3-0、4-0或4-1；同时精确比分本身不确定，页面会列出多条高概率分支。当前信心 ${confidence}% 会在获得正式首发、市场概率和本届世界杯实战后自动修正。` };
 }
 
 function eventToMatch(event) {
@@ -356,7 +515,7 @@ function eventToMatch(event) {
   const actualScore = [Number(homeEntry.score || 0), Number(awayEntry.score || 0)];
   const homeMeta = window.WORLD_CUP_TEAM_META?.[homeEnglish];
   const awayMeta = window.WORLD_CUP_TEAM_META?.[awayEnglish];
-  const market = marketPrediction(event, homeMeta?.name || homeEnglish, awayMeta?.name || awayEnglish);
+  const market = marketPrediction(event, homeEnglish, awayEnglish, homeMeta?.name || homeEnglish, awayMeta?.name || awayEnglish);
   const baseline = baselinePrediction(homeEnglish, awayEnglish, homeMeta?.name || homeEnglish, awayMeta?.name || awayEnglish);
   const base = rich || {
     id: `espn-${event.id}`, home: genericTeam(homeEnglish), away: genericTeam(awayEnglish), ...baseline, momentum: [50,56,48,61,53,58,47,62,55,59,52,57], moments: [["赛前", "关注正式首发与阵型"], ["上半场", "观察中场控制和推进方向"], ["下半场", "替补深度与比分压力可能改变比赛"]], process: [["0–15'", "确认比赛计划", `${homeMeta?.name || homeEnglish}会先测试对手的压迫高度与边路保护，${awayMeta?.name || awayEnglish}则观察能否安全完成第一次向前传递。开局不只看控球率，更要看哪队能把球送到对方中场身后。`], ["15–35'", "形成主要进攻路线", "阵型适应后，优势一方会反复攻击同一薄弱区域。重点观察边后卫是否敢于压上、后腰能否保护反击，以及中锋获得的是背身球还是面向球门的机会。"], ["35–45+'", "上半场风险窗口", "体能首次下降后，禁区前沿犯规、角球和第二点会增加。若仍是平局，热门一方可能提高压迫，反而给对手留下最清晰的反击空间。"], ["45–60'", "教练修正", "中场休息会针对出球线路和盯人方式调整。落后方通常先提高边路位置；领先方则要决定继续压迫，还是用更稳妥的控球降低比赛回合。"], ["60–75'", "替补改变对位", "第一批换人会带来速度、支点或额外中场。此阶段需观察新球员攻击哪一侧，以及原先承担大量跑动的边后卫和后腰是否开始失位。"], ["75–90+'", "结果管理与最后冲击", "比分会主导一切：领先方收窄阵型、保护禁区中路；落后方增加传中、远射和定位球投入。最后结果往往由二点球、门将处理和一次错误选择决定。"]]

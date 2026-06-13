@@ -103,6 +103,51 @@ function phaseForecast(minute, homeName, awayName, homeScore, awayScore, homePre
   return `${leader ? `${leader}现在的首要目标是减少无保护的丢球，${trailer}会把更多球员推入禁区` : "最后阶段任何一次失误、定位球或门将处理都可能直接决定结果"}。补时长度、二点球和反击时是否选择正确传球，将比整体控球率更重要。`;
 }
 
+function buildPostMatchReview(homeName, awayName, homeScore, awayScore, hs, as) {
+  const winner = homeScore > awayScore ? homeName : awayScore > homeScore ? awayName : null;
+  const loser = homeScore > awayScore ? awayName : awayScore > homeScore ? homeName : null;
+  const homeShots = hs.totalShots || 0, awayShots = as.totalShots || 0;
+  const homeTargets = hs.shotsOnTarget || 0, awayTargets = as.shotsOnTarget || 0;
+  const homePossession = hs.possessionPct || 0, awayPossession = as.possessionPct || 0;
+  const homeCorners = hs.wonCorners || 0, awayCorners = as.wonCorners || 0;
+  const homeEfficiency = homeTargets ? homeScore / homeTargets : 0;
+  const awayEfficiency = awayTargets ? awayScore / awayTargets : 0;
+  const dominant = homeShots + homeTargets * 1.8 > awayShots + awayTargets * 1.8 + 5 ? homeName : awayShots + awayTargets * 1.8 > homeShots + homeTargets * 1.8 + 5 ? awayName : null;
+  const headline = winner ? `${winner}以 ${homeScore}-${awayScore} 取胜。${dominant === winner ? "赛果与机会优势基本一致。" : dominant === loser ? "胜方在场面不占优时展现了更高效率与比赛管理。" : "比赛整体接近，关键阶段的处理决定结果。"}` : `双方 ${homeScore}-${awayScore} 战平。两队都制造了得分阶段，但没有把优势持续转化为胜势。`;
+  const homeEvaluation = `${homeName}控球 ${homePossession}%，完成 ${homeShots} 次射门、${homeTargets} 次射正和 ${homeCorners} 个角球。${homeScore > awayScore ? (homeEfficiency >= .45 ? "进攻机会转化效率较高，领先后对比赛风险的处理也更成熟。" : "虽然取胜，但射正转化仍有提升空间，胜利更多来自持续施压或关键球。") : homeScore < awayScore ? (homeTargets >= awayTargets ? "并非没有机会，但门前处理和防守关键回合不如对手。" : "推进难以稳定转成高质量射门，落后后也未能形成持续压制。") : "场面贡献足以拿分，但要赢球仍需提高最后一传和射门质量。"}`;
+  const awayEvaluation = `${awayName}控球 ${awayPossession}%，完成 ${awayShots} 次射门、${awayTargets} 次射正和 ${awayCorners} 个角球。${awayScore > homeScore ? (awayEfficiency >= .45 ? "反击或关键机会把握非常有效，比赛计划执行清楚。" : "通过更完整的攻防阶段赢下比赛，但仍有未被兑现的机会。") : awayScore < homeScore ? (awayTargets >= homeTargets ? "创造力并不落后，问题集中在效率、失球时机和领先区域的防守。" : "多数时间未能把球推进到真正危险区域，进攻支援和禁区人数不足。") : "防守韧性帮助球队保住积分，下一场需要增加主动进攻阶段。"}`;
+  const decisiveFactors = `${homeTargets}-${awayTargets} 的射正、${homeCorners}-${awayCorners} 的角球以及 ${homeScore}-${awayScore} 的机会转化共同说明：${winner ? `${winner}在决定比分的回合中处理更准确` : "双方在机会质量和转化上没有拉开足够差距"}。${(hs.redCards || 0) + (as.redCards || 0) ? `本场红牌为 ${hs.redCards || 0}-${as.redCards || 0}，人数变化也是比赛结构的重要转折。` : "比赛没有因红牌形成长期人数失衡。"}`;
+  const nextImpact = `这场真实数据会写入两队本届世界杯档案，下一轮将据此调整进攻效率、防守稳定性、预期进球、胜平负概率和模型信心。`;
+  return { headline, homeEvaluation, awayEvaluation, decisiveFactors, nextImpact };
+}
+
+function translateEvent(event) {
+  const type = event.type?.text || "事件";
+  const raw = event.text || "比赛关键事件";
+  const teamNames = Object.keys(teamMeta).sort((a, b) => b.length - a.length);
+  const localizeTeam = value => teamNames.reduce((text, name) => text.replaceAll(name, zhName(name)), value);
+  let match;
+  if (type.includes("Goal") && (match = raw.match(/Goal!\s*([^.]*)\.\s*([^.(]+)(?:\s*\(([^)]+)\))?/i))) {
+    const scoreLine = localizeTeam(match[1].trim());
+    const scorer = match[2].trim();
+    const assist = raw.match(/Assisted by ([^.]+)\./i)?.[1];
+    return { type: "进球", text: `进球：${scorer}破门，场上比分变为 ${scoreLine}${assist ? `，助攻：${assist.trim()}` : ""}。` };
+  }
+  if (type.includes("Substitution") && (match = raw.match(/Substitution,\s*([^.]+)\.\s*([^.]*) replaces ([^.]+)\./i))) return { type: "换人", text: `换人：${localizeTeam(match[1].trim())}用 ${match[2].trim()} 换下 ${match[3].trim()}。` };
+  if (type.includes("Red Card")) {
+    const player = raw.match(/^([^.(]+)/)?.[1]?.trim() || "一名球员";
+    const team = raw.match(/\(([^)]+)\)/)?.[1];
+    return { type: "红牌", text: `红牌：${player}${team ? `（${localizeTeam(team)}）` : ""}被罚下，比赛人数平衡发生变化。` };
+  }
+  if (type.includes("Yellow Card")) {
+    const player = raw.match(/^([^.(]+)/)?.[1]?.trim() || "一名球员";
+    const team = raw.match(/\(([^)]+)\)/)?.[1];
+    return { type: "黄牌", text: `黄牌：${player}${team ? `（${localizeTeam(team)}）` : ""}因本次犯规受到警告。` };
+  }
+  if (type.includes("Penalty")) return { type: "点球", text: "点球事件：裁判判罚点球，这次判罚直接影响了比赛的重要阶段。" };
+  return { type: "比赛事件", text: "比赛关键事件已记录，后台将继续整理为中文说明。" };
+}
+
 function buildLiveAnalysis(detail) {
   const competition = detail.header?.competitions?.[0];
   const entries = competition?.competitors || [];
@@ -141,15 +186,16 @@ function buildLiveAnalysis(detail) {
   const awayAccuracy = as.totalShots ? Math.round((as.shotsOnTarget || 0) / as.totalShots * 100) : 0;
   const passingTeam = possessionEdge > 5 ? homeName : possessionEdge < -5 ? awayName : null;
   const sections = [
-    `${minute || "当前"}分钟，比分 ${homeScore}-${awayScore}。${controlTeam ? `${controlTeam}控球更主动` : "双方控球接近"}，控球率为 ${hs.possessionPct || 0}% 对 ${as.possessionPct || 0}%。${homeScore === awayScore ? "比分尚未迫使任何一方彻底放弃赛前结构。" : "当前比分已经开始改变两队的风险选择。"}`,
-    `射门 ${hs.totalShots || 0}-${as.totalShots || 0}、射正 ${hs.shotsOnTarget || 0}-${as.shotsOnTarget || 0}，射正率约 ${homeAccuracy}%-${awayAccuracy}%。${dangerTeam ? `${dangerTeam}目前制造的真实门前威胁更高` : "两队机会质量接近或样本仍小"}；不能只看射门数量，还要看射门是否来自禁区内和防守失位。`,
-    `${passingTeam ? `${passingTeam}更能把比赛留在自己脚下` : "两队在球权控制上没有明显分界"}。结合射门和角球计算的压力值约为 ${Math.round(homePressure)}-${Math.round(awayPressure)}，${homePressure > awayPressure + 8 ? `${homeName}的连续进攻更完整` : awayPressure > homePressure + 8 ? `${awayName}的连续进攻更完整` : "场面仍在反复转换"}。下一步要看第一脚向前传球能否越过对方中场。`,
-    `角球 ${hs.wonCorners || 0}-${as.wonCorners || 0}，犯规 ${hs.foulsCommitted || 0}-${as.foulsCommitted || 0}，黄牌 ${hs.yellowCards || 0}-${as.yellowCards || 0}，红牌 ${hs.redCards || 0}-${as.redCards || 0}。${redEdge ? "人数变化已显著改变攻守预期，少打一方必须缩短阵型并减少无谓压上。" : "人数仍然均等，但累积黄牌会降低后卫后续上抢强度。"}`,
+    completed ? `全场结束，${homeName} ${homeScore}-${awayScore} ${awayName}。${controlTeam ? `${controlTeam}拥有更多控球` : "双方控球接近"}，最终控球率为 ${hs.possessionPct || 0}% 对 ${as.possessionPct || 0}%。比分已经成为事实，以下内容仅作比赛复盘。` : `${minute || "当前"}分钟，比分 ${homeScore}-${awayScore}。${controlTeam ? `${controlTeam}控球更主动` : "双方控球接近"}，控球率为 ${hs.possessionPct || 0}% 对 ${as.possessionPct || 0}%。${homeScore === awayScore ? "比分尚未迫使任何一方彻底放弃赛前结构。" : "当前比分已经开始改变两队的风险选择。"}`,
+    `射门 ${hs.totalShots || 0}-${as.totalShots || 0}、射正 ${hs.shotsOnTarget || 0}-${as.shotsOnTarget || 0}，射正率约 ${homeAccuracy}%-${awayAccuracy}%。${dangerTeam ? `${dangerTeam}${completed ? "全场" : "目前"}制造的真实门前威胁更高` : completed ? "两队全场机会质量差距不大" : "两队机会质量接近或样本仍小"}；射门的区域、压力和防守是否失位，比单纯数量更能解释结果。`,
+    `${passingTeam ? `${passingTeam}更能把比赛留在自己脚下` : "两队在球权控制上没有明显分界"}。结合射门和角球计算的压力值约为 ${Math.round(homePressure)}-${Math.round(awayPressure)}，${homePressure > awayPressure + 8 ? `${homeName}的连续进攻更完整` : awayPressure > homePressure + 8 ? `${awayName}的连续进攻更完整` : "场面在双方之间反复转换"}。${completed ? "这一数据反映了全场攻势持续性，但最终仍需与进球效率一同判断。" : "下一步要看第一脚向前传球能否越过对方中场。"}`,
+    `角球 ${hs.wonCorners || 0}-${as.wonCorners || 0}，犯规 ${hs.foulsCommitted || 0}-${as.foulsCommitted || 0}，黄牌 ${hs.yellowCards || 0}-${as.yellowCards || 0}，红牌 ${hs.redCards || 0}-${as.redCards || 0}。${redEdge ? completed ? "人数变化显著改变了比赛结构，少打一方被迫缩短阵型并减少进攻投入。" : "人数变化已显著改变攻守预期，少打一方必须缩短阵型并减少无谓压上。" : completed ? "全场没有出现红牌导致的长期人数失衡，比赛主要由十一对十一阶段决定。" : "人数仍然均等，但累积黄牌会降低后卫后续上抢强度。"}`,
     completed ? `体能与换人复盘：最终射门、射正和控球反映的是整场结果，不代表每个阶段都由同一方占优。需要结合关键事件判断换人是否提升了推进速度，以及领先方是否成功保护了边路和禁区弧顶。` : `${minute < 55 ? "首批换人尚可能改变中场人数和边路速度" : "比赛已经进入换人直接改变对位的阶段"}。当前更需要保护的区域是${homePressure > awayPressure + 8 ? `${awayName}禁区前沿与边后卫身后` : awayPressure > homePressure + 8 ? `${homeName}禁区前沿与边后卫身后` : "双方后腰身侧和第二点区域"}。`,
     completed ? `赛后结论：${homeScore > awayScore ? homeName : homeScore < awayScore ? awayName : "双方"}${homeScore === awayScore ? "各取一分" : "把关键阶段的机会转化成了结果"}。这场实战会自动进入下一轮预测，修正进攻效率、防守稳定性、阵容使用和模型信心。` : phaseForecast(minute, homeName, awayName, homeScore, awayScore, homePressure, awayPressure)
   ];
-  const important = (detail.keyEvents || []).filter(event => ["Goal", "Red Card", "Yellow Card", "Substitution", "Penalty"].some(type => event.type?.text?.includes(type))).slice(-8).map(event => ({ time: event.clock?.displayValue || "", type: event.type?.text || "事件", text: event.text || "比赛关键事件" }));
-  return { minute, score: [homeScore, awayScore], probabilities, confidence, stats: { home: hs, away: as }, sections, events: important, updatedAt: new Date().toISOString() };
+  const important = (detail.keyEvents || []).filter(event => ["Goal", "Red Card", "Yellow Card", "Substitution", "Penalty"].some(type => event.type?.text?.includes(type))).slice(-8).map(event => ({ time: event.clock?.displayValue || "", ...translateEvent(event) }));
+  const review = completed ? buildPostMatchReview(homeName, awayName, homeScore, awayScore, hs, as) : null;
+  return { minute, completed, score: [homeScore, awayScore], probabilities, confidence, stats: { home: hs, away: as }, sections, events: important, review, updatedAt: new Date().toISOString() };
 }
 
 function updateTournamentForm(event, detail) {

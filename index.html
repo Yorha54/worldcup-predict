@@ -35,7 +35,7 @@
           <p class="hero-desc">历史数据、球队风格、阵容情报与 AI 推演，浓缩成一张比赛作战图。</p>
         </div>
         <div class="model-card">
-          <span>模型综合信心</span>
+          <span id="confidenceLabel">模型综合信心</span>
           <strong id="confidenceValue">78<small>%</small></strong>
           <div class="confidence-bar"><i id="confidenceBar"></i></div>
           <small id="modelNote">基于赛程、状态、阵容与比赛资讯</small>
@@ -116,6 +116,7 @@
             <div class="chart-labels"><span>0'</span><span>15'</span><span>30'</span><span>半场</span><span>60'</span><span>75'</span><span>90'</span></div>
           </div>
           <div class="key-moments" id="keyMoments"></div>
+          <div class="full-match-review" id="fullMatchReview" hidden></div>
         </article>
       </section>
 
@@ -152,6 +153,7 @@
     <script src="schedule-data.js"></script>
     <script src="team-profiles.js"></script>
     <script src="team-profiles-14.js"></script>
+    <script src="team-profiles-rest.js"></script>
     <script src="real-data.js"></script>
     <script src="app.js"></script>
   </body>

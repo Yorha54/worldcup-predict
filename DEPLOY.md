@@ -45,6 +45,7 @@
 - `schedule-data.js`
 - `team-profiles.js`
 - `team-profiles-14.js`
+- `team-profiles-rest.js`
 - `package.json`
 - `Dockerfile`
 - `railway.toml`

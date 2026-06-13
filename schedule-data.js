@@ -20,7 +20,21 @@
     "Australia":75,"Scotland":74,"Ivory Coast":74,"Algeria":73,"Paraguay":73,"Egypt":72,"Sweden":72,"Canada":71,"Tunisia":70,"Czechia":70,"Saudi Arabia":68,
     "Qatar":67,"Bosnia-Herzegovina":67,"Ghana":67,"Panama":66,"South Africa":65,"Uzbekistan":65,"Iraq":64,"Jordan":62,"Cape Verde Islands":62,"Congo DR":62,"New Zealand":59,"Haiti":56,"Curaçao":54
   };
+  const attacks = {
+    "Argentina":93,"France":95,"Spain":94,"England":92,"Brazil":92,"Portugal":91,"Germany":90,"Netherlands":88,"Morocco":86,"Uruguay":86,"Colombia":87,"Belgium":86,
+    "Croatia":80,"Japan":84,"United States":83,"Mexico":80,"Senegal":81,"Switzerland":79,"Ecuador":78,"Austria":82,"South Korea":80,"Norway":91,"Türkiye":84,"Iran":77,
+    "Australia":75,"Scotland":75,"Ivory Coast":79,"Algeria":78,"Paraguay":72,"Egypt":80,"Sweden":87,"Canada":77,"Tunisia":66,"Czechia":71,"Saudi Arabia":70,
+    "Qatar":69,"Bosnia-Herzegovina":70,"Ghana":79,"Panama":70,"South Africa":66,"Uzbekistan":69,"Iraq":65,"Jordan":62,"Cape Verde Islands":63,"Congo DR":76,"New Zealand":62,"Haiti":60,"Curaçao":57
+  };
+  const defences = {
+    "Argentina":93,"France":91,"Spain":92,"England":91,"Brazil":87,"Portugal":90,"Germany":84,"Netherlands":87,"Morocco":91,"Uruguay":87,"Colombia":84,"Belgium":78,
+    "Croatia":84,"Japan":81,"United States":77,"Mexico":78,"Senegal":85,"Switzerland":85,"Ecuador":86,"Austria":80,"South Korea":76,"Norway":74,"Türkiye":75,"Iran":80,
+    "Australia":78,"Scotland":76,"Ivory Coast":76,"Algeria":72,"Paraguay":82,"Egypt":75,"Sweden":73,"Canada":68,"Tunisia":76,"Czechia":72,"Saudi Arabia":66,
+    "Qatar":64,"Bosnia-Herzegovina":65,"Ghana":65,"Panama":69,"South Africa":67,"Uzbekistan":70,"Iraq":67,"Jordan":63,"Cape Verde Islands":68,"Congo DR":73,"New Zealand":58,"Haiti":55,"Curaçao":52
+  };
   window.WORLD_CUP_TEAM_META = Object.fromEntries(rows.map(([key,name,flag,group]) => [key,{key,name,flag,group}]));
   window.WORLD_CUP_TEAM_ALIASES = aliases;
   window.WORLD_CUP_TEAM_STRENGTH = strengths;
+  window.WORLD_CUP_TEAM_ATTACK = attacks;
+  window.WORLD_CUP_TEAM_DEFENCE = defences;
 })();

@@ -112,6 +112,16 @@ main { overflow: hidden; }
 .prob-track { height: 3px; background: #1b3a30; border-radius: 5px; overflow: hidden; }
 .prob-track i { display: block; height: 100%; background: var(--mint); }
 .prob-item:first-child .prob-track i { background: var(--lime); }
+.side-predictions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
+.side-prediction { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.035); }
+.side-prediction span { display: block; color: var(--muted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.side-prediction strong { display: block; margin-top: 4px; font-size: 15px; color: var(--text); }
+.side-prediction small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.recent-results { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.recent-results > strong { display: block; margin-bottom: 9px; font-size: 11px; }
+.recent-result { display: grid; grid-template-columns: 54px 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 10px; }
+.recent-result span { color: var(--muted); }
+.recent-result b { color: var(--lime); }
 .ai-summary { margin: 20px 0 0; padding: 15px 18px; color: #c1d0ca; background: #071d16; border-left: 2px solid var(--lime); border-radius: 0 9px 9px 0; font-size: 12px; line-height: 1.8; }
 .card-title > div { display: flex; align-items: center; }
 .card-title h3 { margin: 0; font-size: 16px; }
@@ -123,6 +133,11 @@ main { overflow: hidden; }
 .key-moments { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .moment { padding: 11px; background: rgba(255,255,255,.035); border-radius: 9px; font-size: 10px; }
 .moment strong { display: block; margin-bottom: 3px; color: var(--lime); font: 700 17px "Barlow Condensed", sans-serif; }
+.full-match-review { margin-top: 16px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.035); }
+.full-match-review h4 { margin: 0 0 12px; color: var(--lime); font-size: 14px; }
+.full-match-review p { margin: 8px 0 0; color: #c1d0ca; font-size: 11px; line-height: 1.75; }
+.full-match-review strong { color: var(--text); }
+body.light .full-match-review p { color: #42564c; }
 
 .intelligence { padding: 72px max(4vw, calc((100vw - 1320px)/2)); color: var(--dark-text); background: var(--white-panel); }
 .section-heading { margin-bottom: 28px; }
@@ -232,7 +247,7 @@ body.light footer { background: #dfe7dc; }
   .versus { grid-template-columns: 1fr 105px 1fr; }
   .flag { font-size: 43px; }
   .score-center div { font-size: 48px; }
-  .probabilities, .key-moments { grid-template-columns: 1fr; }
+  .probabilities, .key-moments, .side-predictions { grid-template-columns: 1fr; }
   .source-strip { align-items: flex-start; flex-wrap: wrap; }
   .source-note { width: 100%; margin-left: 0; }
   .news-item { grid-template-columns: auto 1fr; }
